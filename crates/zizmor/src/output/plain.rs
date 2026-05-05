@@ -1,5 +1,6 @@
 //! "plain" (i.e. cargo-style) output.
 
+use itertools::Itertools;
 use std::collections::{HashMap, hash_map::Entry};
 
 use annotate_snippets::{Annotation, AnnotationKind, Group, Level, Renderer, Snippet};
@@ -9,7 +10,7 @@ use owo_colors::OwoColorize;
 use crate::{
     RenderLinks, ShowAuditUrls,
     finding::{
-        Finding, Severity,
+        Finding, FixDisposition, Severity,
         location::{Location, LocationKind},
     },
     models::AsDocument,
@@ -126,11 +127,20 @@ pub(crate) fn render_findings(
         ));
     }
 
-    let nfixable = findings.fixable_findings().count();
-    if nfixable > 0 {
+    let fixes_by_disposition: HashMap<FixDisposition, usize> = findings
+        .fixable_findings()
+        .flat_map(|finding| &finding.fixes)
+        .map(|fix| fix.disposition)
+        .counts();
+    let mut sorted_fixes_by_disposition: Vec<_> = fixes_by_disposition.iter().collect();
+    sorted_fixes_by_disposition.sort_by_key(|a| a.0);
+    for (disposition, count) in sorted_fixes_by_disposition {
         qualifiers.push(format!(
-            "{nfixable} fixable",
-            nfixable = nfixable.bright_green()
+            "{} {disposition} fixes",
+            match disposition {
+                FixDisposition::Safe => count.bright_green().to_string(),
+                FixDisposition::Unsafe => count.bright_red().to_string(),
+            }
         ));
     }
 
